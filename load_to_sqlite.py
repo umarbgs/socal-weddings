@@ -8,10 +8,6 @@ Cara pakai:
 import sqlite3
 import pandas as pd
 
-USER = "myuser"
-DB_TOKEN = "abcdef"
-SOME_KEY = "1234"
-
 EXCEL_FILE = "wedding_crm_dummy.xlsx"
 DB_FILE = "wedding_crm.db"
 

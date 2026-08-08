@@ -1,0 +1,46 @@
+CARA PASANG (reset bersih)
+============================
+
+1. Extract/unzip file ini di komputer kamu dulu, sampai kelihatan 4 file:
+   - streamlit_app.py
+   - config.yaml
+   - load_to_sqlite.py
+   - wedding_crm_dummy.xlsx
+
+2. Buka repo GitHub kamu (socal-weddings) di browser.
+
+3. Klik "Add file" > "Upload files".
+
+4. Drag KEEMPAT file di atas sekaligus ke area upload itu.
+   Karena nama filenya sama dengan yang sudah ada di repo,
+   GitHub otomatis akan MENIMPA (overwrite) file lama yang berantakan.
+
+5. Scroll ke bawah, klik "Commit changes".
+
+6. Balik ke Codespaces kamu, jalankan di terminal:
+
+   git pull
+
+   Kalau muncul error "local changes would be overwritten", jalankan dulu:
+
+   git checkout -- streamlit_app.py config.yaml
+   git pull
+
+7. Install semua library yang dibutuhkan:
+
+   uv add pandas openpyxl streamlit-authenticator
+
+8. Generate ulang database dari Excel:
+
+   uv run python load_to_sqlite.py
+
+9. Jalankan dashboard:
+
+   uv run streamlit run streamlit_app.py
+
+10. Login untuk test:
+    - admin / admin123   -> lihat semua tab termasuk Revenue
+    - dewi  / sales123   -> tidak lihat tab Revenue
+
+Kalau masih error di salah satu langkah, screenshot pesan errornya
+dan kirim ke chat Claude.
