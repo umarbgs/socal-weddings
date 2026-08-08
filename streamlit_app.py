@@ -1,50 +1,89 @@
 import streamlit as st
 import pandas as pd
 import sqlite3
-import plotly.express as px
 
-# ==================================================
-# CONFIG
-# ==================================================
+# =========================
+# PAGE CONFIG
+# =========================
 st.set_page_config(
-    page_title="Wedding CRM Dashboard",
+    page_title="Wedding CRM",
     page_icon="💍",
     layout="wide"
 )
 
 DB_FILE = "wedding_crm.db"
 
-# ==================================================
-# DATABASE
-# ==================================================
-@st.cache_data
-def load_table(table_name):
-    conn = sqlite3.connect(DB_FILE)
 
+# =========================
+# LOAD DATA
+# =========================
+def load_table(table_name):
     try:
-        df = pd.read_sql(
-            f"SELECT * FROM {table_name}",
+        conn = sqlite3.connect(DB_FILE)
+        df = pd.read_sql_query(
+            f"SELECT * FROM '{table_name}'",
             conn
         )
-    except:
-        df = pd.DataFrame()
+        conn.close()
+        return df
 
-    conn.close()
-    return df
+    except Exception as e:
+        st.error(f"Error membaca tabel {table_name}")
+        st.error(str(e))
+        return pd.DataFrame()
 
 
+# =========================
+# LOGIN (OPTIONAL)
+# =========================
+try:
+
+    if "logged_in" not in st.session_state:
+        st.session_state.logged_in = False
+
+    if not st.session_state.logged_in:
+
+        st.title("🔐 Login")
+
+        username = st.text_input("Username")
+        password = st.text_input(
+            "Password",
+            type="password"
+        )
+
+        if st.button("Login"):
+
+            if (
+                username == st.secrets["USERNAME"]
+                and password == st.secrets["PASSWORD"]
+            ):
+                st.session_state.logged_in = True
+                st.rerun()
+
+            else:
+                st.error("Username atau Password salah")
+
+        st.stop()
+
+except:
+    pass
+
+
+# =========================
+# LOAD TABLES
+# =========================
 profile_df = load_table("profile")
 event_df = load_table("event")
 revenue_df = load_table("revenue")
 notification_df = load_table("notification")
 
-# ==================================================
+# =========================
 # SIDEBAR
-# ==================================================
+# =========================
 st.sidebar.title("💍 Wedding CRM")
 
-menu = st.sidebar.radio(
-    "Navigation",
+page = st.sidebar.selectbox(
+    "Menu",
     [
         "Dashboard",
         "Clients",
@@ -54,93 +93,79 @@ menu = st.sidebar.radio(
     ]
 )
 
-# ==================================================
+# =========================
 # DASHBOARD
-# ==================================================
-if menu == "Dashboard":
+# =========================
+if page == "Dashboard":
 
     st.title("💍 Wedding CRM Dashboard")
 
-    total_clients = len(profile_df)
-
-    total_events = len(event_df)
-
-    total_notifications = len(notification_df)
+    total_client = len(profile_df)
+    total_event = len(event_df)
+    total_notification = len(notification_df)
 
     total_revenue = 0
 
     if not revenue_df.empty:
 
-        revenue_cols = revenue_df.select_dtypes(
-            include="number"
-        ).columns
-
-        if len(revenue_cols) > 0:
-            total_revenue = revenue_df[revenue_cols[0]].sum()
-
-    c1, c2, c3, c4 = st.columns(4)
-
-    c1.metric("Clients", total_clients)
-    c2.metric("Events", total_events)
-    c3.metric("Notifications", total_notifications)
-    c4.metric("Revenue", f"${total_revenue:,.0f}")
-
-    st.divider()
-
-    if not event_df.empty:
-
-        st.subheader("Upcoming Events")
-
-        st.dataframe(
-            event_df.head(10),
-            use_container_width=True
-        )
-
-    if not revenue_df.empty:
-
-        st.subheader("Revenue Chart")
-
         numeric_cols = revenue_df.select_dtypes(
-            include="number"
+            include=["number"]
         ).columns
 
         if len(numeric_cols) > 0:
+            total_revenue = revenue_df[
+                numeric_cols[0]
+            ].sum()
 
-            fig = px.histogram(
-                revenue_df,
-                x=numeric_cols[0],
-                title="Revenue Distribution"
-            )
+    col1, col2, col3, col4 = st.columns(4)
 
-            st.plotly_chart(
-                fig,
-                use_container_width=True
-            )
+    col1.metric(
+        "Clients",
+        total_client
+    )
 
-# ==================================================
+    col2.metric(
+        "Events",
+        total_event
+    )
+
+    col3.metric(
+        "Notifications",
+        total_notification
+    )
+
+    col4.metric(
+        "Revenue",
+        f"{total_revenue:,.0f}"
+    )
+
+# =========================
 # CLIENTS
-# ==================================================
-elif menu == "Clients":
+# =========================
+elif page == "Clients":
 
-    st.title("👰 Client Profiles")
+    st.title("👰 Client List")
 
     if profile_df.empty:
-        st.warning("No data found")
+
+        st.warning("Data profile kosong")
+
     else:
 
-        search = st.text_input(
-            "Search Client"
+        keyword = st.text_input(
+            "Cari Client"
         )
 
-        filtered = profile_df.copy()
+        result = profile_df.copy()
 
-        if search:
+        if keyword:
 
-            filtered = filtered[
-                filtered.astype(str)
+            result = result[
+                result.astype(str)
                 .apply(
-                    lambda x: x.str.contains(
-                        search,
+                    lambda col:
+                    col.str.contains(
+                        keyword,
                         case=False,
                         na=False
                     )
@@ -148,73 +173,49 @@ elif menu == "Clients":
                 .any(axis=1)
             ]
 
-        st.dataframe(
-            filtered,
-            use_container_width=True
-        )
+        st.dataframe(result)
 
-# ==================================================
+# =========================
 # EVENTS
-# ==================================================
-elif menu == "Events":
+# =========================
+elif page == "Events":
 
     st.title("📅 Events")
 
     if event_df.empty:
-        st.warning("No event data found")
+
+        st.warning("Data event kosong")
+
     else:
 
-        st.dataframe(
-            event_df,
-            use_container_width=True
-        )
+        st.dataframe(event_df)
 
-# ==================================================
+# =========================
 # REVENUE
-# ==================================================
-elif menu == "Revenue":
+# =========================
+elif page == "Revenue":
 
     st.title("💰 Revenue")
 
     if revenue_df.empty:
-        st.warning("No revenue data found")
+
+        st.warning("Data revenue kosong")
 
     else:
 
-        st.dataframe(
-            revenue_df,
-            use_container_width=True
-        )
+        st.dataframe(revenue_df)
 
-        numeric_cols = revenue_df.select_dtypes(
-            include="number"
-        ).columns
-
-        if len(numeric_cols) > 0:
-
-            fig = px.bar(
-                revenue_df,
-                y=numeric_cols[0],
-                title="Revenue"
-            )
-
-            st.plotly_chart(
-                fig,
-                use_container_width=True
-            )
-
-# ==================================================
-# NOTIFICATION
-# ==================================================
-elif menu == "Notifications":
+# =========================
+# NOTIFICATIONS
+# =========================
+elif page == "Notifications":
 
     st.title("🔔 Notifications")
 
     if notification_df.empty:
-        st.warning("No notification data found")
+
+        st.warning("Data notification kosong")
+
     else:
 
-        st.dataframe(
-            notification_df,
-            use_container_width=True
-        )
+        st.dataframe(notification_df)
