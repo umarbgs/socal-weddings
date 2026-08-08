@@ -1,81 +1,220 @@
-"""
-Dashboard CRM Wedding — versi awal, jalan 100% offline di PC.
-
-Cara pakai:
-    1. pip install streamlit pandas
-    2. python load_to_sqlite.py      (sekali di awal, atau tiap update data)
-    3. streamlit run dashboard.py    (buka otomatis di browser lokal)
-
-Nanti kalau mau online: deploy folder ini ke Streamlit Community Cloud (gratis),
-kode ini tidak perlu diubah. Karena berbasis browser, otomatis bisa dibuka dari HP.
-"""
-import sqlite3
-import pandas as pd
 import streamlit as st
-from datetime import date
+import pandas as pd
+import sqlite3
+import plotly.express as px
 
-st.set_page_config(page_title="Wedding CRM Dashboard", layout="wide")
+# ==================================================
+# CONFIG
+# ==================================================
+st.set_page_config(
+    page_title="Wedding CRM Dashboard",
+    page_icon="💍",
+    layout="wide"
+)
 
-conn = sqlite3.connect("wedding_crm.db")
+DB_FILE = "wedding_crm.db"
 
-def load(table):
-    return pd.read_sql(f"SELECT * FROM {table}", conn)
+# ==================================================
+# DATABASE
+# ==================================================
+@st.cache_data
+def load_table(table_name):
+    conn = sqlite3.connect(DB_FILE)
 
-st.title("Wedding CRM Dashboard")
+    try:
+        df = pd.read_sql(
+            f"SELECT * FROM {table_name}",
+            conn
+        )
+    except:
+        df = pd.DataFrame()
 
-tab1, tab2, tab3, tab4 = st.tabs(["Ringkasan", "Profile & Keluarga", "Event & Revenue", "Notifikasi"])
+    conn.close()
+    return df
 
-with tab1:
-    accounts = load("account")
-    profiles = load("profile")
-    events = load("event")
-    revenue = load("revenue")
 
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Total akun", len(accounts))
-    col2.metric("Total event", len(events))
-    col3.metric("Total revenue (Rp)", f"{revenue['amount'].sum():,.0f}")
+profile_df = load_table("profile")
+event_df = load_table("event")
+revenue_df = load_table("revenue")
+notification_df = load_table("notification")
 
-    st.subheader("Event terbaru")
-    st.dataframe(events.sort_values("event_date", ascending=False), use_container_width=True)
+# ==================================================
+# SIDEBAR
+# ==================================================
+st.sidebar.title("💍 Wedding CRM")
 
-with tab2:
-    st.subheader("Semua profile")
-    profiles = load("profile")
-    st.dataframe(profiles, use_container_width=True)
+menu = st.sidebar.radio(
+    "Navigation",
+    [
+        "Dashboard",
+        "Clients",
+        "Events",
+        "Revenue",
+        "Notifications"
+    ]
+)
 
-    st.subheader("Relasi keluarga (potensi wedding berikutnya)")
-    links = load("family_link")
-    merged = links.merge(profiles, left_on="profile_id", right_on="profile_id", suffixes=("", "_a"))
-    merged = merged.merge(
-        profiles, left_on="related_profile_id", right_on="profile_id", suffixes=("_a", "_b")
-    )
-    if not merged.empty:
-        display_cols = merged[["full_name_a", "relation_type", "full_name_b", "notes"]]
-        display_cols.columns = ["Profile", "Hubungan", "Terhubung ke", "Catatan"]
-        st.dataframe(display_cols, use_container_width=True)
+# ==================================================
+# DASHBOARD
+# ==================================================
+if menu == "Dashboard":
+
+    st.title("💍 Wedding CRM Dashboard")
+
+    total_clients = len(profile_df)
+
+    total_events = len(event_df)
+
+    total_notifications = len(notification_df)
+
+    total_revenue = 0
+
+    if not revenue_df.empty:
+
+        revenue_cols = revenue_df.select_dtypes(
+            include="number"
+        ).columns
+
+        if len(revenue_cols) > 0:
+            total_revenue = revenue_df[revenue_cols[0]].sum()
+
+    c1, c2, c3, c4 = st.columns(4)
+
+    c1.metric("Clients", total_clients)
+    c2.metric("Events", total_events)
+    c3.metric("Notifications", total_notifications)
+    c4.metric("Revenue", f"${total_revenue:,.0f}")
+
+    st.divider()
+
+    if not event_df.empty:
+
+        st.subheader("Upcoming Events")
+
+        st.dataframe(
+            event_df.head(10),
+            use_container_width=True
+        )
+
+    if not revenue_df.empty:
+
+        st.subheader("Revenue Chart")
+
+        numeric_cols = revenue_df.select_dtypes(
+            include="number"
+        ).columns
+
+        if len(numeric_cols) > 0:
+
+            fig = px.histogram(
+                revenue_df,
+                x=numeric_cols[0],
+                title="Revenue Distribution"
+            )
+
+            st.plotly_chart(
+                fig,
+                use_container_width=True
+            )
+
+# ==================================================
+# CLIENTS
+# ==================================================
+elif menu == "Clients":
+
+    st.title("👰 Client Profiles")
+
+    if profile_df.empty:
+        st.warning("No data found")
     else:
-        st.info("Belum ada data relasi keluarga.")
 
-with tab3:
-    events = load("event")
-    revenue = load("revenue")
-    merged = events.merge(revenue, on="event_id", how="left")
-    st.dataframe(merged, use_container_width=True)
+        search = st.text_input(
+            "Search Client"
+        )
 
-with tab4:
-    st.subheader("Notifikasi mendatang")
-    notif = load("notification")
-    profiles = load("profile")
-    notif = notif.merge(profiles[["profile_id", "full_name"]], on="profile_id", how="left")
-    notif["trigger_date"] = pd.to_datetime(notif["trigger_date"], errors="coerce")
-    notif["days_remaining"] = (notif["next_occurrence"].apply(pd.to_datetime, errors="coerce"))
-    notif = notif.sort_values("trigger_date")
-    st.dataframe(
-        notif[["notif_id", "full_name", "notif_type", "trigger_date", "status"]],
-        use_container_width=True,
-    )
-    st.caption(
-        "Catatan: kolom next_occurrence/days_remaining dihitung otomatis di Excel via formula. "
-        "Setelah data disinkronkan dari Excel yang sudah di-recalculate, nilainya akan ikut terbawa."
-    )
+        filtered = profile_df.copy()
+
+        if search:
+
+            filtered = filtered[
+                filtered.astype(str)
+                .apply(
+                    lambda x: x.str.contains(
+                        search,
+                        case=False,
+                        na=False
+                    )
+                )
+                .any(axis=1)
+            ]
+
+        st.dataframe(
+            filtered,
+            use_container_width=True
+        )
+
+# ==================================================
+# EVENTS
+# ==================================================
+elif menu == "Events":
+
+    st.title("📅 Events")
+
+    if event_df.empty:
+        st.warning("No event data found")
+    else:
+
+        st.dataframe(
+            event_df,
+            use_container_width=True
+        )
+
+# ==================================================
+# REVENUE
+# ==================================================
+elif menu == "Revenue":
+
+    st.title("💰 Revenue")
+
+    if revenue_df.empty:
+        st.warning("No revenue data found")
+
+    else:
+
+        st.dataframe(
+            revenue_df,
+            use_container_width=True
+        )
+
+        numeric_cols = revenue_df.select_dtypes(
+            include="number"
+        ).columns
+
+        if len(numeric_cols) > 0:
+
+            fig = px.bar(
+                revenue_df,
+                y=numeric_cols[0],
+                title="Revenue"
+            )
+
+            st.plotly_chart(
+                fig,
+                use_container_width=True
+            )
+
+# ==================================================
+# NOTIFICATION
+# ==================================================
+elif menu == "Notifications":
+
+    st.title("🔔 Notifications")
+
+    if notification_df.empty:
+        st.warning("No notification data found")
+    else:
+
+        st.dataframe(
+            notification_df,
+            use_container_width=True
+        )
